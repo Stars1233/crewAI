@@ -9,6 +9,11 @@ from contextlib import contextmanager
 from importlib.metadata import version
 from typing import TYPE_CHECKING, Any, Optional
 
+from crewai.telemetry.constants import (
+    CREWAI_TELEMETRY_BASE_URL,
+    CREWAI_TELEMETRY_SERVICE_NAME,
+)
+
 
 @contextmanager
 def suppress_warnings():
@@ -45,23 +50,22 @@ class Telemetry:
     """
 
     def __init__(self):
-        self.ready = False
-        self.trace_set = False
+        self.ready: bool = False
+        self.trace_set: bool = False
 
-        if os.getenv("OTEL_SDK_DISABLED", "false").lower() == "true":
+        if self._is_telemetry_disabled():
             return
 
         try:
-            telemetry_endpoint = "https://telemetry.crewai.com:4319"
             self.resource = Resource(
-                attributes={SERVICE_NAME: "crewAI-telemetry"},
+                attributes={SERVICE_NAME: CREWAI_TELEMETRY_SERVICE_NAME},
             )
             with suppress_warnings():
                 self.provider = TracerProvider(resource=self.resource)
 
             processor = BatchSpanProcessor(
                 OTLPSpanExporter(
-                    endpoint=f"{telemetry_endpoint}/v1/traces",
+                    endpoint=f"{CREWAI_TELEMETRY_BASE_URL}/v1/traces",
                     timeout=30,
                 )
             )
@@ -75,6 +79,13 @@ class Telemetry:
             ):
                 raise  # Re-raise the exception to not interfere with system signals
             self.ready = False
+
+    def _is_telemetry_disabled(self) -> bool:
+        """Check if telemetry should be disabled based on environment variables."""
+        return (
+            os.getenv("OTEL_SDK_DISABLED", "false").lower() == "true"
+            or os.getenv("CREWAI_DISABLE_TELEMETRY", "false").lower() == "true"
+        )
 
     def set_tracer(self):
         if self.ready and not self.trace_set:
